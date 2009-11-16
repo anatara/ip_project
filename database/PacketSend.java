@@ -49,9 +49,6 @@ public class PacketSend {
 	}
 	
 	public static final String convBaryString_IP(byte[] bary){
-		
-		
-		
 		Integer firstbyte=new Integer((int)bary[0] & 0x000000FF);
 		Integer secondbyte=new Integer((int)bary[1] & 0x000000FF);
 		Integer thirdbyte=new Integer((int)bary[2] & 0x000000FF);

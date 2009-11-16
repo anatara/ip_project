@@ -1,18 +1,40 @@
 package packetformat;
 
+import general.genfunc;
+
 import java.net.InetAddress;
 
 public class pack{
+
+	public genfunc gfns = new genfunc();
 	
 	public byte [] packet;
 	
 	public byte pkttype;
-	public byte ID[]=new byte[6];
+	public byte ID[]=new byte[4];
 	public byte TTL;
 	public byte IP[]=new byte[4];
 	public byte port_no[]=new byte[2];
 	public byte reqrep;
+	public byte [] data;
 	
+	public pack(){
+		
+	}
+	
+	public pack(byte[] packet, int length){
+		//gfns.printbary(packet);
+		//System.out.println("packet lenth is " + length);		
+		
+		this.data=new byte[length-12];
+		
+		this.pkttype=packet[0];
+		System.arraycopy(packet,  1, this.ID, 0, 4);
+		this.TTL=packet[5];
+		System.arraycopy(packet,  6, this.IP, 0, 4);
+		System.arraycopy(packet, 10, this.port_no,0,2);
+		System.arraycopy(packet, 12, this.data, 0, data.length);	
+	}
 	
 	public pack(byte pkttype, int iD, byte tTL, InetAddress iP, int portNo, byte[] data) {
 		super();
@@ -37,8 +59,13 @@ public class pack{
 	public byte[] getPacket() {
 		return packet;
 	}
-
-
+	
+	public byte[] getheader(){
+		byte[] temp = new byte [this.packet.length-this.data.length];
+		System.arraycopy(this.packet, 0, temp, 0, temp.length);
+		return temp;
+	}
+	
 	private void clean_all() {
 		// TODO Auto-generated method stub
 		pkttype=0;
@@ -48,8 +75,110 @@ public class pack{
 		TTL=0;
 		port_no=new byte[]{0};
 		reqrep=0;
+		data=new byte[]{0};
 	}
 
+
+	
+	public static void main(String args[]) 
+	{  
+	}
+
+
+	public void putPacket(byte[] packet){
+		
+//		gfns.printbary(packet);
+//		System.out.println("packet lenth is " + packet.length);		
+//		
+//		this.data=new byte[packet.length-12];
+//		
+//		this.pkttype=packet[0];
+//		System.arraycopy(packet,  1, this.ID, 0, 4);
+//		this.TTL=packet[5];
+//		System.arraycopy(packet,  6, this.IP, 0, 4);
+//		System.arraycopy(packet, 10, this.port_no,0,2);
+//		System.arraycopy(packet, 12, this.data, 0, packet.length-12);
+	}
+	
+	public int getID() {
+		return gfns.convBaryInt(this.ID) ;
+	}
+
+
+	public void setID(byte[] id) {
+		ID = id;
+	}
+
+
+	public InetAddress getIP() {
+		InetAddress Addr=null;
+		try{
+			Addr=InetAddress.getByAddress(this.IP);
+			
+		}
+		
+		catch(Exception e){
+			e.printStackTrace();
+		}
+		
+		return Addr;
+	}
+
+
+	public void setIP(byte[] ip) {
+		IP = ip;
+	}
+
+
+	public int getPkttype() {
+			
+		return ((int)this.pkttype);
+	}
+
+
+	public void setPkttype(byte pkttype) {
+		this.pkttype = pkttype;
+	}
+
+
+	public int getPort_no() {
+		return(gfns.convBaryInt(port_no));
+	}
+
+
+	public void setPort_no(byte[] port_no) {
+		this.port_no = port_no;
+	}
+
+
+	public int getTTL() {
+		return ((int)this.TTL);
+	}
+
+
+	public void setTTL(byte ttl) {
+		TTL = ttl;
+	}
+
+
+	public byte getReqrep() {
+		return reqrep;
+	}
+
+
+	public void setReqrep(byte reqrep) {
+		this.reqrep = reqrep;
+	}
+	
+
+	public byte[] getData() {
+		return data;
+	}
+
+	public void setData(byte[] data) {
+		this.data = data;
+	}
+	
 
 	public String reqsetpkt(byte []p,byte[] id,byte[] T,byte[] ip,byte[] no)
 	{
@@ -133,19 +262,7 @@ public class pack{
 //		ID = identification.getBytes();
 //		TTL = ttl.getBytes();   	
 	}
-
-	public static final void printbary(byte[] bary) {
-		for (int i = 0; i < bary.length; i++) {
-			int t= bary[i];
-			String temp = "0000";
-			temp=temp.concat(Integer.toHexString(t));
-			temp=temp.toUpperCase();
-			System.out.printf("%c%c",temp.charAt(temp.length()-2),temp.charAt(temp.length()-1));
-		}
-		System.out.println("");
-	}
 	
-	public static void main(String args[]) 
-	{  
-	}
+	
+	
 }
