@@ -17,7 +17,7 @@ public class pack{
 	public byte port_no[]=new byte[2];
 	public byte reqrep;
 	public byte [] data;
-	
+	public byte [] paylength=new byte[4];
 	public pack(){
 		
 	}
@@ -26,17 +26,18 @@ public class pack{
 		//gfns.printbary(packet);
 		//System.out.println("packet lenth is " + length);		
 		
-		this.data=new byte[length-12];
+		this.data=new byte[length-16];
 		
 		this.pkttype=packet[0];
 		System.arraycopy(packet,  1, this.ID, 0, 4);
 		this.TTL=packet[5];
 		System.arraycopy(packet,  6, this.IP, 0, 4);
 		System.arraycopy(packet, 10, this.port_no,0,2);
-		System.arraycopy(packet, 12, this.data, 0, data.length);	
+		System.arraycopy(packet, 12, this.paylength, 0, 4);
+		System.arraycopy(packet, 16, this.data,0,data.length);
 	}
 	
-	public pack(byte pkttype, int iD, byte tTL, InetAddress iP, int portNo, byte[] data) {
+	public pack(byte pkttype, int iD, byte tTL, InetAddress iP, int portNo, int paylen, byte[] data) {
 		super();
 		clean_all();
 		
@@ -44,9 +45,10 @@ public class pack{
 		ID = new byte[] {(byte)(iD >>> 24),(byte)(iD >>> 16),(byte)(iD >>> 8),(byte)iD};
 		TTL = tTL;
 		IP = iP.getAddress();
-		port_no = new byte[] {(byte)(portNo >>> 8),(byte)portNo};		
+		port_no = new byte[] {(byte)(portNo >>> 8),(byte)portNo};
+		paylength=new byte[] {(byte)(paylen >>> 24),(byte)(paylen >>> 16),(byte)(paylen >>> 8),(byte)paylen};
 
-		byte [] temp=new byte[]{this.pkttype,ID[0],ID[1],ID[2],ID[3],TTL,IP[0],IP[1],IP[2],IP[3],port_no[0],port_no[1]};
+		byte [] temp=new byte[]{this.pkttype,ID[0],ID[1],ID[2],ID[3],TTL,IP[0],IP[1],IP[2],IP[3],port_no[0],port_no[1],paylength[0],paylength[1],paylength[2],paylength[3]};
 
 		packet = new byte[temp.length + data.length];
 		System.arraycopy(temp, 0, packet, 0, temp.length);
@@ -76,6 +78,7 @@ public class pack{
 		port_no=new byte[]{0};
 		reqrep=0;
 		data=new byte[]{0};
+		paylength=new byte[]{0};
 	}
 
 
@@ -87,17 +90,6 @@ public class pack{
 
 	public void putPacket(byte[] packet){
 		
-//		gfns.printbary(packet);
-//		System.out.println("packet lenth is " + packet.length);		
-//		
-//		this.data=new byte[packet.length-12];
-//		
-//		this.pkttype=packet[0];
-//		System.arraycopy(packet,  1, this.ID, 0, 4);
-//		this.TTL=packet[5];
-//		System.arraycopy(packet,  6, this.IP, 0, 4);
-//		System.arraycopy(packet, 10, this.port_no,0,2);
-//		System.arraycopy(packet, 12, this.data, 0, packet.length-12);
 	}
 	
 	public int getID() {
@@ -261,6 +253,10 @@ public class pack{
 //		pkttype = packettype.getBytes();
 //		ID = identification.getBytes();
 //		TTL = ttl.getBytes();   	
+	}
+
+	public int getPaylength() {
+		return (gfns.convBaryInt(this.paylength));
 	}
 	
 	

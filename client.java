@@ -14,10 +14,10 @@ import packetformat.*;
 import database.*;
 
 public class client{
-
 	
 	
-	public static void main(String[] args) throws IOException  {
+	
+	public static void main(String[] args) throws Exception  {
 		client_gui t1=new client_gui();
 	}
 

@@ -1,9 +1,21 @@
 package general;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.URL;
+import java.util.BitSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.StringTokenizer;
+
 public class genfunc {
 
 	public byte[] convIntBary_2(int ival) {
 		return new byte[] {(byte)(ival >>> 8),(byte)ival};
+	}
+	
+	public byte[] convIntBary(int ival) {
+		return new byte[] {(byte)(ival >>> 24),(byte)(ival >>> 16),(byte)(ival >>> 8),(byte)ival};
 	}
 
 	public int convBaryInt(byte [] bary) {
@@ -17,6 +29,8 @@ public class genfunc {
 
 		return 0;
 	}
+	
+	
 
 	public void printbary(byte[] bary) {
 		for (int i = 0; i < bary.length; i++) {
@@ -38,5 +52,44 @@ public class genfunc {
 		}
 		return data;
 	}
+	
+	public String ByteArraytohexString(byte[] bary){
+		
+		String result = "";
+		  for (int i=0; i < bary.length; i++) {
+		    result +=Integer.toString( ( bary[i] & 0xff ) + 0x100, 16).substring( 1 );
+		  }
+		  return (result.toUpperCase());
+		
+		
+	}
+	
+	//	 Returns a bitset containing the values in bytes.
+    // The byte-ordering of bytes must be big-endian which means the most significant bit is in element 0.
+    public  BitSet fromByteArray(byte[] bytes) {
+        BitSet bits = new BitSet();
+        for (int i=0; i<bytes.length*8; i++) {
+            if ((bytes[bytes.length-i/8-1]&(1<<(i%8))) > 0) {
+                bits.set(i);
+            }
+        }
+        return bits;
+    }
+    
+    
+    public byte[] getIpAsArrayOfByte(String ipAddress) {
 
+        StringTokenizer st = new StringTokenizer(ipAddress, ".");
+        byte[] ip = new byte[4];
+        int i = 0;
+
+        while (st.hasMoreTokens()) {
+            ip[i++] = (byte)Integer.parseInt(st.nextToken());
+        }
+
+        return ip;
 }
+    
+	
+}	
+
