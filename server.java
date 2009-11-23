@@ -5,8 +5,8 @@ import java.sql.*;
 import java.util.*;
 import java.lang.*;
 
-import com.sun.jndi.cosnaming.IiopUrl.Address;
 
+import sun.net.www.http.KeepAliveCache;
 import trigest.*;
 import gui.*;
 import packetformat.*;
@@ -56,10 +56,12 @@ class clientSocket implements Runnable{
 
 			tcp_pack=new pack(tcp_packet,tcp_packet.length);
 
-
+			byte[] usrname = new byte[gfns.convBaryInt(new byte[]{tcp_pack.data[0],tcp_pack.data[1]})];
+			System.arraycopy(tcp_pack.data, 2, usrname, 0, usrname.length);
+			//			System.out.println ("adfadsfdfadsf this is the uise name " + new String(usrname));
 
 			System.out.println("New tcp connection");
-			if (! valid_active_user(tcp_pack)){
+			if (! valid_active_user(tcp_pack,new String(usrname))){
 				System.out.println("User not currently active. Please login");
 				//login_error_udp(tcp_pack.IP);
 				c_server.send_reply(tcp_pack, (byte)99, (byte) 0);
@@ -114,9 +116,14 @@ class clientSocket implements Runnable{
 		int index=0,rec_count=0;
 		int lengthF=0;
 
-		byte[] text_searched=new byte[tcp_pack.getPaylength()];
-		System.arraycopy(tcp_pack.getData(), 0, text_searched, 0, tcp_pack.getPaylength());
+		//The last 1024 is the signature of the searched string 
+		byte[] text_searched=new byte[1024];
+		//gfns.printbary(tcp_pack.getData());
+
+		System.arraycopy(tcp_pack.getData(), tcp_pack.getData().length-1024, text_searched, 0, 1024);
 		text_search_bits=gfns.fromByteArray(text_searched);
+
+		//gfns.printbary(text_searched);
 
 		con=DriverManager.getConnection("jdbc:mysql://localhost/bootstrap?" + "user=root&password=mysqlpwd");
 		String sql = "SELECT * from  FILETABLE WHERE ACTIVE_STATUS = ? ORDER BY DOWNLOADS DESC";
@@ -183,15 +190,16 @@ class clientSocket implements Runnable{
 
 	}
 
-	private boolean valid_active_user(pack tcp_pack) throws SQLException {
+	private boolean valid_active_user(pack tcp_pack, String usrname) throws SQLException {
 		int Result=0;
 
 
 		con=DriverManager.getConnection("jdbc:mysql://localhost/bootstrap?" + "user=root&password=mysqlpwd");
-		String sql = "SELECT ACTIVE_STATUS from  IPTABLE where IPADDR=?";
+		String sql = "SELECT ACTIVE_STATUS from  IPTABLE where IPADDR=? AND HOST=?";
 		pstmt = con.prepareStatement(sql);
 
 		pstmt.setString(1, tcp_pack.getIP().getHostAddress());	//Setting the status as active
+		pstmt.setString(2, usrname);	
 		rs = pstmt.executeQuery();
 		while(rs.next()){
 			Result = Integer.parseInt(rs.getString("ACTIVE_STATUS"));
@@ -292,17 +300,12 @@ public class server  implements Runnable{
 	public Statement stmt;
 	public PreparedStatement pstmt;
 	public ResultSet rs;
+	public InetAddress myAddr;
+	public Map<String, Integer> user_status_hash = new LinkedHashMap<String, Integer>();
 
 
 	public void run() {
 
-		try {
-			prop.load(this.getClass().getResourceAsStream("/Resolver.Properties"));
-			open_udp_port();
-		} catch (Exception e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
 
 		stmt=null;
 		pstmt=null;
@@ -326,6 +329,24 @@ public class server  implements Runnable{
 			System.out.println("VendorError: " + ex.getErrorCode());
 
 		}
+
+		try {
+			prop.load(this.getClass().getResourceAsStream("/Resolver.Properties"));
+
+			myinet4addr getmyaddr = new myinet4addr();
+			myAddr = getmyaddr.getMy4Ia();
+			System.out.println("Using my IP address " + myAddr );
+
+			open_udp_port();
+
+
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}		
+
+
+
 	}
 
 	//Open a UDP pocket and wait for ever
@@ -342,7 +363,7 @@ public class server  implements Runnable{
 			while(true){
 				try {
 					pocket.receive(packet);  
-					System.out.println("packet received");
+					//System.out.println("packet received");
 					process_pocket(packet);
 					if (1==0){break;}
 				}
@@ -367,6 +388,7 @@ public class server  implements Runnable{
 		switch(udp_pack.getPkttype()){
 
 		case 1:
+
 			result = validate_login(udp_pack)[0];
 			if ( result != (byte)255) {
 				System.out.println("Login is success");
@@ -380,13 +402,191 @@ public class server  implements Runnable{
 			break;
 
 		case 2:
-
 			update_status_host_table(udp_pack,0);
+			break;			
 
+		case 3:
+			//System.out.println("received 3");
+			update_status_host_table(udp_pack,1);
+			break;	
+
+		case 5:
+
+			// Registering New User
+
+			register_user(udp_pack);
+			break;
+
+		case 51:
+			remove_file_entry(udp_pack);
+			break;		
+
+		case 31:
+			update_dload_count(udp_pack);
 			break;			
 		}
 
 	}
+
+
+	private void remove_file_entry(pack udpPack) {
+
+
+		byte[] lenghtF=new byte[2];
+		int aIndex=0;
+
+System.out.println("Going to remove file entry");
+		System.arraycopy(udpPack.data,0,lenghtF,0,2);
+		byte[]  usrname=new byte[gfns.convBaryInt(lenghtF)];
+		System.arraycopy(udpPack.data,2,usrname,0,gfns.convBaryInt(lenghtF));
+		aIndex+=2+gfns.convBaryInt(lenghtF);
+
+		System.arraycopy(udpPack.data,aIndex,lenghtF,0,2);
+		byte[]  md=new byte[gfns.convBaryInt(lenghtF)];
+		System.arraycopy(udpPack.data,aIndex+2,md,0,gfns.convBaryInt(lenghtF));
+		aIndex+=2+gfns.convBaryInt(lenghtF);
+
+		stmt=null;
+		pstmt=null;
+		rs=null;
+
+		try{
+			con=DriverManager.getConnection("jdbc:mysql://localhost/bootstrap?" + "user=root&password=mysqlpwd");
+			String sql = " DELETE from FILETABLE where USER = ? AND MSGDST = ?";
+			pstmt = con.prepareStatement(sql);
+
+			pstmt.setString(1, new String(usrname) );	//Setting the status as active
+			pstmt.setString(2, gfns.ByteArraytohexString(md) );
+			pstmt.executeUpdate();
+
+		}
+
+		catch (SQLException ex){
+			System.out.println("SQLException: " + ex.getMessage());
+			System.out.println("SQLState: " + ex.getSQLState());
+			System.out.println("VendorError: " + ex.getErrorCode());
+
+		}
+
+	}
+
+
+
+
+	private void update_dload_count(pack udp_pack) {
+		stmt=null;
+		pstmt=null;
+		rs=null;
+
+		byte[] lenghtF=new byte[2];
+		int index=0;
+
+		System.arraycopy(udp_pack.data,0,lenghtF,0,2);
+		byte[]  usrname=new byte[gfns.convBaryInt(lenghtF)];
+		System.arraycopy(udp_pack.data,2,usrname,0,gfns.convBaryInt(lenghtF));
+		index=2+gfns.convBaryInt(lenghtF);
+
+		System.arraycopy(udp_pack.data,index,lenghtF,0,2);
+		byte[]  md=new byte[gfns.convBaryInt(lenghtF)];
+		System.arraycopy(udp_pack.data,2+index,md,0,gfns.convBaryInt(lenghtF));
+
+		try{
+			con=DriverManager.getConnection("jdbc:mysql://localhost/bootstrap?" + "user=root&password=mysqlpwd");
+
+			String sql = "UPDATE FILETABLE SET DOWNLOADS = DOWNLOADS + 1 WHERE USER = ? AND MSGDST = ?";
+
+
+			pstmt = con.prepareStatement(sql);
+			pstmt.setString(1, new String(usrname));//Setting the ip address
+			pstmt.setString(2, gfns.ByteArraytohexString(md));//Setting the ip address
+
+			pstmt.executeUpdate();
+
+		}
+
+		catch (SQLException ex){
+			System.out.println("SQLException: " + ex.getMessage());
+			System.out.println("SQLState: " + ex.getSQLState());
+			System.out.println("VendorError: " + ex.getErrorCode());
+
+		}
+
+
+
+	}
+
+
+	public void register_user(pack udpPack) throws Exception
+	{
+		byte[] lenghtF=new byte[2];
+		int aIndex=0, result=0;
+
+
+		System.arraycopy(udpPack.data,0,lenghtF,0,2);
+		byte[]  usrname=new byte[gfns.convBaryInt(lenghtF)];
+		System.arraycopy(udpPack.data,2,usrname,0,gfns.convBaryInt(lenghtF));
+		aIndex+=2+gfns.convBaryInt(lenghtF);
+
+		System.out.println("User: " + lenghtF);
+		gfns.printbary(usrname);
+
+		System.arraycopy(udpPack.data,aIndex,lenghtF,0,2);
+		byte[]  passwd=new byte[gfns.convBaryInt(lenghtF)];
+		System.arraycopy(udpPack.data,aIndex+2,passwd,0,gfns.convBaryInt(lenghtF));
+		aIndex+=2+gfns.convBaryInt(lenghtF);
+
+		System.out.println("Pwd: " + passwd);
+		gfns.printbary(passwd);
+
+		System.arraycopy(udpPack.data,aIndex,lenghtF,0,2);
+		byte[]  email=new byte[gfns.convBaryInt(lenghtF)];
+		System.arraycopy(udpPack.data,aIndex+2,email,0,gfns.convBaryInt(lenghtF));
+		aIndex+=2+gfns.convBaryInt(lenghtF);		
+
+		stmt=null;
+		pstmt=null;
+		rs=null;
+
+		try{
+
+			con=DriverManager.getConnection("jdbc:mysql://localhost/bootstrap?" + "user=root&password=mysqlpwd");
+			String sql = "INSERT INTO IPTABLE (IPADDR, HOST, PASSWORD, ACTIVE_STATUS, EMAIL) VALUES(?,?,?,?,?)";
+			pstmt = con.prepareStatement(sql);
+			pstmt.clearParameters();
+			pstmt.setString(1,udpPack.getIP().getHostAddress());
+			pstmt.setString(2,new String(usrname));
+			pstmt.setString(3,gfns.ByteArraytohexString(passwd));
+			pstmt.setInt(4,0);
+			pstmt.setString(5,new String(email));
+			result=pstmt.executeUpdate();
+			if(result==1){
+				System.out.println("Insertion successful");
+			}
+			else{
+				System.out.println("Insertion failed");
+			}
+
+			send_reply(udpPack, (byte)6, (byte) result);
+
+		}
+
+		catch (SQLException ex){
+			send_reply(udpPack, (byte)6, (byte) 0);
+			System.out.println("SQLException: " + ex.getMessage());
+			System.out.println("SQLState: " + ex.getSQLState());
+			System.out.println("VendorError: " + ex.getErrorCode());
+
+		}		
+
+	}
+
+
+
+
+
+
+
+
 
 
 	public void update_status_host_table(pack udp_pack, int status) {
@@ -403,21 +603,28 @@ public class server  implements Runnable{
 		byte[]  usrname=new byte[gfns.convBaryInt(lenghtF)];
 		System.arraycopy(udp_pack.data,2,usrname,0,gfns.convBaryInt(lenghtF));
 
+
+		user_status_hash.put( new String(usrname), status);
+
+
+
 		try{
 			con=DriverManager.getConnection("jdbc:mysql://localhost/bootstrap?" + "user=root&password=mysqlpwd");
 
 			if(status == 1){
-				String sql = "UPDATE IPTABLE SET ACTIVE_STATUS = ? WHERE HOST = ?";
+				String sql = "UPDATE IPTABLE SET ACTIVE_STATUS = ?, IPADDR = ? WHERE HOST = ?";
 
 
 				pstmt = con.prepareStatement(sql);
-				pstmt.setString(2, new String(usrname));//Setting the USERNAME
+				pstmt.setString(3, new String(usrname));//Setting the USERNAME
+				pstmt.setString(2, IPAddr.getHostAddress());
 				pstmt.setInt(1,status);	//Setting the status of F as active
 				pstmt.executeUpdate();
 
-				String sql1= "UPDATE FILETABLE SET ACTIVE_STATUS = ? WHERE USER = ?";
+				String sql1= "UPDATE FILETABLE SET ACTIVE_STATUS = ?, IPADDR = ?  WHERE USER = ?";
 				pstmt=con.prepareStatement(sql1);
-				pstmt.setString(2, new String(usrname));//Setting the USERNAME
+				pstmt.setString(2, IPAddr.getHostAddress());
+				pstmt.setString(3, new String(usrname));//Setting the USERNAME
 				pstmt.setInt(1,status);	//Setting the status of F as active
 				pstmt.executeUpdate();
 
@@ -426,15 +633,17 @@ public class server  implements Runnable{
 			}
 
 			else{
-				String sql = "UPDATE IPTABLE SET ACTIVE_STATUS = ? WHERE IPADDR = ?";
-				String sql1 = "UPDATE FILETABLE SET ACTIVE_STATUS = ? WHERE IPADDR = ?";
+				String sql = "UPDATE IPTABLE SET ACTIVE_STATUS = ? WHERE IPADDR = ? AND HOST = ?";
+				String sql1 = "UPDATE FILETABLE SET ACTIVE_STATUS = ? WHERE IPADDR = ? AND USER = ?";
 
 				pstmt = con.prepareStatement(sql);
+				pstmt.setString(3,new String(usrname));
 				pstmt.setString(2, IPAddr.getHostAddress());//Setting the ip address
 				pstmt.setInt(1,status);	//Setting the status of F as active
 				pstmt.executeUpdate();
 
 				pstmt=con.prepareStatement(sql1);
+				pstmt.setString(3,new String(usrname));
 				pstmt.setString(2, IPAddr.getHostAddress());//Setting the ip address
 				pstmt.setInt(1,status);	//Setting the status of F as active
 				pstmt.executeUpdate();
@@ -452,7 +661,7 @@ public class server  implements Runnable{
 
 
 	public void send_reply(pack reqPack, byte code, byte res) throws Exception {
-		InetAddress myAddr;
+		//InetAddress myAddr;
 		int servPort, cliPort;
 		pack udp_pack;
 		DatagramPacket pack;
@@ -463,7 +672,7 @@ public class server  implements Runnable{
 			if (res!=(byte)255) {res=(byte)1;}
 			else res=(byte)0;
 
-		myAddr=InetAddress.getLocalHost();
+		//myAddr=InetAddress.getLocalHost();
 
 		servPort = Integer.parseInt(prop.getProperty("Server_UDP_Port"));
 
@@ -476,11 +685,27 @@ public class server  implements Runnable{
 		pocket.send(pack);
 		break;
 
+		case (byte)6 :
+
+			//myAddr=InetAddress.getLocalHost();
+
+			servPort = Integer.parseInt(prop.getProperty("Server_UDP_Port"));
+
+		cliAddr = reqPack.getIP();
+		cliPort = Integer.parseInt(prop.getProperty("Client_UDP_Port"));
+		payload=new byte[]{00, 01, res};
+		udp_pack = new pack( (byte)6, (int)1234, (byte)16, myAddr,servPort,payload.length,payload);
+
+		pack = new DatagramPacket(udp_pack.getPacket(),udp_pack.getPacket().length,cliAddr,cliPort);
+		pocket.send(pack);
+		break;
+
+
 		case (byte)99 :
 
-			myAddr=InetAddress.getLocalHost();
+			//myAddr=InetAddress.getLocalHost();
 
-		servPort = Integer.parseInt(prop.getProperty("Server_UDP_Port"));
+			servPort = Integer.parseInt(prop.getProperty("Server_UDP_Port"));
 
 		cliAddr = reqPack.getIP();
 		cliPort = Integer.parseInt(prop.getProperty("Client_UDP_Port"));
@@ -492,6 +717,8 @@ public class server  implements Runnable{
 		break;
 
 		}
+
+
 	}
 
 	private byte[] validate_login(pack udpPack) {
@@ -547,7 +774,9 @@ public class server  implements Runnable{
 
 	public static void main(String[] args) throws Exception {
 		server s1=new server();
+		server_keepAlive ska = new server_keepAlive(s1);
 		tcp_server t1=new tcp_server(s1);
+		new Thread(ska).start();
 		new Thread(t1).start();
 		new Thread(s1).start();
 
@@ -599,4 +828,93 @@ class tcp_server implements Runnable{
 
 	}
 }
+
+
+
+
+class server_keepAlive implements Runnable{
+
+
+	public Properties prop=new Properties();
+	public genfunc gfns = new genfunc();
+	public Connection con;
+	public Statement stmt;
+	public PreparedStatement pstmt;
+	public ResultSet rs;
+	public server k_server;
+
+	server_keepAlive(server k_server){
+		this.k_server=k_server;
+	}
+
+	public void run(){
+		while(true){
+			try {
+				create_hash(k_server.user_status_hash);
+				//System.out.println("start sleep");
+				Thread.currentThread();
+				Thread.sleep(300000);
+				//System.out.println("end sleep");
+
+				String usrname;
+				Iterator it = k_server.user_status_hash.keySet().iterator();
+				while(it.hasNext()) {
+					usrname=(String) it.next();
+					if (k_server.user_status_hash.get(usrname) == 0){
+						System.out.println("checking usr name " + usrname + " status is " + k_server.user_status_hash.get(usrname));
+						update_status(usrname, 0);
+					}
+				} 
+
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+	}
+
+	private void update_status(String usrname, int i) {
+		stmt=null;
+		pstmt=null;
+		rs=null;
+
+		try{
+			con=DriverManager.getConnection("jdbc:mysql://localhost/bootstrap?" + "user=root&password=mysqlpwd");
+
+			String sql = "UPDATE IPTABLE SET ACTIVE_STATUS = ? WHERE HOST = ?";
+			String sql1 = "UPDATE FILETABLE SET ACTIVE_STATUS = ? WHERE USER = ?";
+
+			pstmt = con.prepareStatement(sql);
+			pstmt.setString(2,usrname);
+			pstmt.setInt(1,0);	//Setting the status of F as active
+			pstmt.executeUpdate();
+
+			pstmt=con.prepareStatement(sql1);
+			pstmt.setString(2,usrname);
+			pstmt.setInt(1,0);	//Setting the status of F as active
+			pstmt.executeUpdate();
+		}
+
+		catch (SQLException ex){
+			System.out.println("SQLException: " + ex.getMessage());
+			System.out.println("SQLState: " + ex.getSQLState());
+			System.out.println("VendorError: " + ex.getErrorCode());
+
+		}
+
+	}
+
+	public void create_hash(Map<String, Integer> user_stat_hash) throws Exception {
+		user_stat_hash.clear();
+		con=DriverManager.getConnection("jdbc:mysql://localhost/bootstrap?" + "user=root&password=mysqlpwd");
+		String sql = "SELECT HOST from  IPTABLE where ACTIVE_STATUS=?";
+		pstmt = con.prepareStatement(sql);
+
+		pstmt.setInt(1, 1);	//Setting the status as active
+		rs = pstmt.executeQuery();
+		while(rs.next()){
+			user_stat_hash.put(rs.getString("HOST"), 0);
+		}
+	}
+}
+
 

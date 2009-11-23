@@ -33,6 +33,7 @@ import java.net.UnknownHostException;
 import java.security.MessageDigest;
 import java.security.PublicKey;
 import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -44,16 +45,19 @@ import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.Vector;
 import javax.swing.BorderFactory;
+import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
+import javax.swing.ListSelectionModel;
 import javax.swing.UIManager;
 import java.awt.Dimension;
 import java.awt.Toolkit;
@@ -63,18 +67,25 @@ import general.*;
 
 public class client_gui extends JFrame implements  ActionListener, Runnable  
 {
-	public JLabel resolver, local,filepath,dnsserv, pwd,resolver1, dnsserv1,page_display ;
-	public JTextField localtxt,urltxt,filearea, pwdtxt,localtxt_home;
+	public JLabel resolver, local,filepath,dnsserv, pwd,resolver1, dnsserv1, dnsserv2,page_display, Username_Reg, Pwd_Reg, Email_Reg, Pub_file, Pub_file_size, Pub_abstract,Pub_file_label ;
+	public JTextField localtxt,urltxt,filearea, pwdtxt,localtxt_home,Username_Reg_txt, Pwd_Reg_txt,Email_Reg_txt;
 	public JTextArea[] sresult_dis=new JTextArea[10];
-	public JButton exit,submit,screen2, search_home, exit_home,publish_home, previous_page, next_page;
+	public JTextArea Pub_abstract_area;
+	public JButton exit,submit,screen2, search_home, exit_home,publish_home, previous_page, next_page, Register, Register_login, Pub_ok, unPublish, Remove_files, cancel_unpublish;
 	public JButton[] sresult_but=new JButton[10];
-	public JFrame frame, frame1;
+	public JFrame frame, frame1, Reg_frame, Pub_frame,unPublish_Frame;
+	public JList list;
+	public DefaultListModel listModel;
 	Map<String, String> fileHash = new LinkedHashMap<String, String>();
 
-
+	public InetAddress myAddr,servAddr;
 	public search_result[] sresult=new search_result[100];
 	public int sresults=0,sresults_sh=0;
 	public int download_reply=0;
+	public String myname;
+	public File publish_file;
+	String[] farray;
+	int present_file_count;
 
 	public Properties prop=new Properties();
 	public Thread thread;
@@ -86,9 +97,16 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 	{
 		super();
 		prop.load(this.getClass().getResourceAsStream("/Resolver.Properties"));
-		System.out.println("Inside Resover cons.....");
 		getDesign();
 		load_file_hash();
+
+		myinet4addr getmyaddr = new myinet4addr();
+		myAddr = getmyaddr.getMy4Ia();
+
+		servAddr= InetAddress.getByAddress(gfns.getIpAsArrayOfByte(prop.getProperty("Server")));
+
+		System.out.println("Using my IP address " + myAddr + " and Server IP address" + servAddr);
+
 
 		open_udp_port();
 		thread=new Thread(this);
@@ -151,7 +169,11 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 
 		case 81:
 			if (login_reply(udp_pack)) {
+
+				client_keepAlive cka = new client_keepAlive(this);
+
 				open_frame1();
+				new Thread(cka).start();
 			}
 			else
 			{
@@ -172,6 +194,23 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 		}
 		break;	
 
+		case 6:
+		{
+			if (udp_pack.getData()[udp_pack.getData().length-1]==1){
+				JOptionPane.showMessageDialog(null, "Registered","New User Registration", JOptionPane.INFORMATION_MESSAGE);
+				Reg_frame.setVisible(false);
+				frame.setVisible(true);
+			}
+			else {
+				JOptionPane.showMessageDialog(null, "Registration failed - User Name already exists","New User Registration", JOptionPane.INFORMATION_MESSAGE);
+				Username_Reg_txt.setText(" ");
+				Pwd_Reg_txt.setText("");
+				Email_Reg_txt.setText(" ");
+			}
+		}
+		break;
+
+
 		case 99:
 		{
 			System.out.println("Some error in login");
@@ -190,7 +229,7 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 			res=2;
 		}
 
-		InetAddress myAddr=InetAddress.getLocalHost();
+		//InetAddress myAddr=InetAddress.getLocalHost();
 		int servPort = Integer.parseInt(prop.getProperty("Client_UDP_Port"));
 		InetAddress cliAddr = udpPack.getIP();
 		int cliPort = udpPack.getPort_no();
@@ -266,18 +305,24 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 		screen2.setBounds(300,300,75,20);
 		panel.add(screen2);
 
+		Register_login=new JButton("New User");
+		Register_login.setBounds(250,400,100,20);
+		panel.add(Register_login);
+
+
 		frame.add(panel);
 
 		frame.setSize(500,500);
 
 		Toolkit toolkit = getToolkit();
 		Dimension size = toolkit.getScreenSize();
-		frame.setLocation(size.width/2 - getWidth()/2, size.height/2 - getHeight()/2);
+		frame.setLocation(size.width/4 - getWidth()/4, size.height/4 - getHeight()/4);
 
 		frame.setVisible(true);
 		submit.addActionListener(this);
 		exit.addActionListener(this);
 		screen2.addActionListener(this);
+		Register_login.addActionListener(this);
 
 		//second frame
 
@@ -336,7 +381,6 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 		}
 
 
-
 		publish_home=new JButton("Publish");
 		publish_home.setBounds(200,620,75,20);
 		panel1.add(publish_home);
@@ -344,6 +388,158 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 		exit_home=new JButton("Exit");
 		exit_home.setBounds(300,620,75,20);
 		panel1.add(exit_home);
+
+
+
+		unPublish = new JButton("UnPublish");
+		unPublish.setBounds(500,620,125,20);
+		panel1.add(unPublish);
+
+		// Registration Frame
+
+		Reg_frame = new JFrame("Registration Screen");
+		Reg_frame.setLayout(new GridLayout(1,2));
+		JPanel panel2 = new JPanel();
+		panel2.setLayout(null);
+		panel2.setBorder(BorderFactory.createTitledBorder("Registration Panel"));
+
+		Username_Reg = new JLabel("User Name:");
+		Username_Reg.setFont(new Font("TimesNewRoman",Font.CENTER_BASELINE,12));
+		Username_Reg.setBounds(70,80,100,20);
+		panel2.add(Username_Reg);
+
+		Username_Reg_txt=new JTextField(30);
+		Username_Reg_txt.setBounds(210,80,150,20);
+		panel2.add(Username_Reg_txt);
+
+		Pwd_Reg = new JLabel("Password:");
+		Pwd_Reg.setFont(new Font("TimesNewRoman",Font.CENTER_BASELINE,12));
+		Pwd_Reg.setBounds(70,140,100,20);
+		panel2.add(Pwd_Reg);
+
+		Pwd_Reg_txt=new JPasswordField(15);
+		Pwd_Reg_txt.setBounds(210,140,150,20);
+		panel2.add(Pwd_Reg_txt);
+
+		Email_Reg = new JLabel("Email ID:");
+		Email_Reg.setFont(new Font("TimesNewRoman",Font.CENTER_BASELINE,12));
+		Email_Reg.setBounds(70,200,100,20);
+		panel2.add(Email_Reg);
+
+		Email_Reg_txt=new JTextField(30);
+		Email_Reg_txt.setBounds(210,200,150,20);
+		panel2.add(Email_Reg_txt);
+
+		dnsserv2 = new JLabel("Register New User");
+		dnsserv2.setFont(new Font("TimesNewRoman",Font.CENTER_BASELINE,18));
+		dnsserv2.setBounds(100,30,300,50);
+		panel2.add(dnsserv2);
+
+		Register=new JButton("Register");
+		Register.setBounds(200,300,100,20);
+		panel2.add(Register);
+		Register.addActionListener(this);
+
+		Reg_frame.add(panel2);
+		Reg_frame.setSize(500,500);
+		Reg_frame.setVisible(false);		
+
+
+		// For Showing Published Data
+
+		Pub_frame = new JFrame("Publish File");
+		Pub_frame.setLayout(new GridLayout(1,2));
+		JPanel Pub_panel = new JPanel();
+		Pub_panel.setLayout(null);
+		Pub_panel.setBorder(BorderFactory.createTitledBorder("Publish File"));
+
+		//	Pub_file = new JLabel("File Name:");
+		//	Pub_file.setFont(new Font("TimesNewRoman",Font.CENTER_BASELINE,12));
+		//	Pub_file.setBounds(70,80,100,20);
+		//	Pub_panel.add(Pub_file);
+
+		Pub_file_size = new JLabel("...");
+		Pub_file_size.setFont(new Font("TimesNewRoman",Font.CENTER_BASELINE,12));
+		Pub_file_size.setBounds(70,80,500,20);
+		Pub_panel.add(Pub_file_size);
+
+
+		Pub_file_label=new JLabel(" ");
+		Pub_file_label.setBounds(70,110,450,20);
+		Pub_panel.add(Pub_file_label);
+
+		Pub_abstract = new JLabel("Abstract:");
+		Pub_abstract.setFont(new Font("TimesNewRoman",Font.CENTER_BASELINE,12));
+		Pub_abstract.setBounds(70,140,100,20);
+		Pub_panel.add(Pub_abstract);
+
+		Pub_abstract_area = new JTextArea();
+		Pub_abstract_area.setFont(new Font("TimesNewRoman",Font.CENTER_BASELINE,12));
+		Pub_abstract_area.setBounds(70,160,360,300);
+		Pub_panel.add(Pub_abstract_area);
+
+		Pub_ok=new JButton("Ok");
+		Pub_ok.setBounds(360,480,70,20);
+		Pub_panel.add(Pub_ok);
+		Pub_ok.addActionListener(this);
+
+		Pub_frame.add(Pub_panel);
+		Pub_frame.setSize(600,600);
+		Pub_frame.setVisible(false);
+
+
+
+		//UnPublish Frame
+		unPublish_Frame = new JFrame("UnPublish");
+		unPublish_Frame.setLayout(new GridLayout(1,2));		
+		JPanel unPublish_panel = new JPanel();
+		unPublish_panel.setLayout(null);
+		unPublish_panel.setBorder(BorderFactory.createTitledBorder("UnPublish Files"));
+
+		Remove_files = new JButton("Remove Files");
+		Remove_files.setBounds(300,150,140,20);
+		unPublish_panel.add(Remove_files);
+
+		cancel_unpublish = new JButton("Cancel");
+		cancel_unpublish.setBounds(300,250,140,20);
+		unPublish_panel.add(cancel_unpublish);
+
+		//		JCheckBox j1 = new JCheckBox();
+		//		j1.setBounds(50, 100, 50, 50);
+		//		unPublish_panel.add(j1);
+
+		listModel = new DefaultListModel();
+
+		list = new JList(listModel); 
+		//list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+		list.setSelectionMode(ListSelectionModel.SINGLE_INTERVAL_SELECTION);
+		list.setLayoutOrientation(JList.VERTICAL);
+		list.setVisibleRowCount(-1);
+		list.setBounds(50,50,200,500);
+
+
+		JScrollPane listScroller = new JScrollPane(list);
+		listScroller.setPreferredSize(new Dimension(250, 80));
+		unPublish_panel.add(list);
+
+		unPublish_Frame.add(unPublish_panel);
+		unPublish_Frame.setSize(600,600);
+		unPublish_Frame.setVisible(false);
+
+		Remove_files.addActionListener(this);
+		cancel_unpublish.addActionListener(this);
+
+		search_home.addActionListener(this);
+		exit_home.addActionListener(this);
+		publish_home.addActionListener(this);
+		next_page.addActionListener(this);
+		previous_page.addActionListener(this);
+		unPublish.addActionListener(this);
+
+		for (int i = 0; i < 10; i++) {
+			sresult_but[i].addActionListener(this);
+		}
+
 
 		frame1.add(panel1);
 		frame1.setSize(700,700);
@@ -373,8 +569,9 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 		{
 			String username = localtxt.getText();
 			String password = pwdtxt.getText();
+			myname=username;
 			try {
-				sendurl(username,password);
+				send_login(username,password);
 			} catch (Exception e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
@@ -413,14 +610,122 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 				final JFileChooser jfc = new JFileChooser();
 				jfc.showOpenDialog(this);
 				if(jfc.getSelectedFile()!=null){
-					publishdata("test",jfc.getSelectedFile());
-				}
+					//publishdata("test",jfc.getSelectedFile());
+					publish_file=jfc.getSelectedFile();
+					Pub_file_size.setText("File :   " + publish_file.getName() + "    (" + publish_file.length() + " bytes)");
+					Pub_file_label.setText(publish_file.getPath());
+					Pub_file_label.setFont(new Font("TimesNewRoman",Font.CENTER_BASELINE,12));
 
+					//frame1.setVisible(false);
+					Pub_frame.setVisible(true);
+					
+				}
 			} catch (Exception e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 			//JOptionPane.showMessageDialog(null, "Published","Publish", JOptionPane.INFORMATION_MESSAGE);
+
+		}
+
+
+		else if(ae.getSource() == unPublish)
+		{
+
+			unPublish_Frame.setVisible(true);
+			
+			publish_home.setEnabled(false);
+
+			listModel.removeAllElements();
+			Iterator it = fileHash.keySet().iterator();
+			farray = new String[fileHash.size()];
+			File fname;
+			present_file_count = 0;
+			while ( it.hasNext()){
+				farray[present_file_count]=(String) it.next();
+				fname = new File (fileHash.get(farray[present_file_count]));
+				listModel.addElement(fname.getName());
+				present_file_count ++;
+			}
+
+		}
+
+		else if(ae.getSource() == cancel_unpublish)
+		{
+
+			unPublish_Frame.setVisible(false);
+			publish_home.setEnabled(true);
+			//listModel.clear();
+
+
+
+		}
+
+		else if(ae.getSource() == Remove_files)
+		{
+			int list_sel_index = list.getSelectedIndex();
+			//list.getSele
+			System.out.println(list_sel_index);
+			listModel.remove(list_sel_index);
+			System.out.println("removing file hash of "+ farray[list_sel_index]);
+			try {
+				remove_file_hash(farray[list_sel_index]);
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+
+
+			Iterator it = fileHash.keySet().iterator();
+			farray = new String[fileHash.size()];
+			File fname;
+			present_file_count = 0;
+			while ( it.hasNext()){
+				farray[present_file_count]=(String) it.next();
+				fname = new File (fileHash.get(farray[present_file_count]));
+				present_file_count ++;
+			}
+
+
+		}
+
+		else if(ae.getSource() == Pub_ok)
+		{
+			try{
+				publishdata(localtxt.getText(),publish_file,Pub_abstract_area.getText());
+				Pub_frame.setVisible(false);
+				//		System.out.println("Abstract: "+ Pub_abstract_area.getText() );
+				frame1.setVisible(true);
+				Pub_abstract_area.setText("");
+			}
+			catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+
+		}
+
+
+		else if(ae.getSource() == Register_login)
+		{
+
+			frame.setVisible(false);
+			Reg_frame.setVisible(true);
+			
+
+		}
+
+		else if(ae.getSource() == Register)
+		{
+			String new_username = Username_Reg_txt.getText();
+			String new_password = Pwd_Reg_txt.getText();
+			String new_email = Email_Reg_txt.getText();
+			try {
+				sendReg(new_username,new_password,new_email);
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 
 		}
 
@@ -446,6 +751,70 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 	}
 
 
+
+
+	private void load_farray() {
+		Iterator it = fileHash.keySet().iterator();
+		farray = new String[fileHash.size()];
+		File fname;
+		present_file_count = 0;
+		while ( it.hasNext()){
+			farray[present_file_count]=(String) it.next();
+			fname = new File (fileHash.get(farray[present_file_count]));
+			listModel.addElement(fname.getName());
+			present_file_count ++;
+		}
+
+	}
+
+	// Registration
+	public void sendReg(String user, String pwd, String email) throws Exception
+	{
+		//	InetAddress myAddr=InetAddress.getLocalHost();
+		//	InetAddress servAddr=InetAddress.getLocalHost();
+
+		int servPort = Integer.parseInt(prop.getProperty("Server_UDP_Port"));
+		int cliPort  = Integer.parseInt(prop.getProperty("Client_UDP_Port"));
+
+
+		//User name & length
+		byte[] b1=gfns.convIntBary_2(user.length());
+		byte[] b2=user.getBytes();
+
+		//Password and length
+		MessageDigest md = MessageDigest.getInstance("SHA-1");
+		byte[] b4 = md.digest(pwd.getBytes());
+		byte[] b3 = gfns.convIntBary_2(b4.length);
+
+		System.out.println("PWD:");
+		gfns.printbary(b4);
+		//Email and length
+		byte[] b5=gfns.convIntBary_2(email.length());
+		byte[] b6=email.getBytes();
+
+
+		byte[] payload=new byte[2*3 + b2.length + b4.length + b6.length];
+
+
+		System.arraycopy(b1, 0, payload, 0, b1.length);
+		System.arraycopy(b2, 0, payload, b1.length, b2.length);
+		System.arraycopy(b3, 0, payload, b1.length+b2.length, b3.length);
+		System.arraycopy(b4, 0, payload, b1.length+b2.length+b3.length, b4.length);
+		System.arraycopy(b5, 0, payload, b1.length+b2.length+b3.length+b4.length, b5.length);
+		System.arraycopy(b6, 0, payload, b1.length+b2.length+b3.length+b4.length+b5.length, b6.length);
+
+		pack udp_pack_reg = new pack((byte)5,(int)1601,(byte)16,myAddr,cliPort,(int)payload.length,payload);
+		DatagramPacket pack_reg = new DatagramPacket(udp_pack_reg.getPacket(),udp_pack_reg.getPacket().length,servAddr,servPort);					    
+
+		pocket.send(pack_reg);
+
+	}
+
+
+
+
+
+
 	private void download_file(int i) {
 		System.out.println("Staring download file from " + sresult[i].getResultCont());
 		try {
@@ -455,26 +824,31 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 				Thread.sleep(500);
 				if(download_reply!=0) {break;}
 			}
+			System.out.println("Staring download file from " + download_reply);
 			if (download_reply==1 || download_reply==0){
 				System.out.println("Download failed -- file not found in server");
 				JOptionPane.showMessageDialog(null, "ERROR : File not found on client","Download Failed", JOptionPane.INFORMATION_MESSAGE);
 				sresult[i].dload_status=0;
-				sresult_but[i].setEnabled(false);
+				sresult_but[i-(sresults_sh-1)*10].setEnabled(false);
 			}
 			else if (download_reply==2){
-				
-				
 				final JFileChooser jfc = new JFileChooser();
 				jfc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
 				jfc.showSaveDialog(this);
 				String folder_name="";
 				if(jfc.getSelectedFile()!=null){
-						folder_name=jfc.getSelectedFile().getAbsolutePath();
+					folder_name=jfc.getSelectedFile().getAbsolutePath()+"/";
 				}
-				File file=new File(folder_name +"/"+ sresult[i].getFilename());
+				File file=new File(folder_name + sresult[i].getFilename());
 				System.out.println("Trying Download -- file found in server, storing in path" + file.getAbsolutePath());
-				establish_download(i,file);
-				JOptionPane.showMessageDialog(null, "File Succesfully Downloaded","Download Success", JOptionPane.INFORMATION_MESSAGE);
+				if (establish_download(i,file)==1){
+					JOptionPane.showMessageDialog(null, "File Succesfully Downloaded","Download Success", JOptionPane.INFORMATION_MESSAGE);
+				}
+				else {
+					JOptionPane.showMessageDialog(null, "Error in File Download - Please try again","Download Failed", JOptionPane.INFORMATION_MESSAGE);
+				
+				}
+				notify_bserver_dload(i,1);
 			}
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
@@ -484,15 +858,50 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 
 	}
 
-	private void establish_download(int i, File file) throws Exception {	
+	private void notify_bserver_dload(int i, int j) throws Exception {
+		int servPort = Integer.parseInt(prop.getProperty("Server_UDP_Port"));
+		int cliPort  = Integer.parseInt(prop.getProperty("Client_UDP_Port"));
 
-		InetAddress myAddr=InetAddress.getLocalHost();
+		byte[] ba1 = gfns.convIntBary_2(sresult[i].getUser().length());
+		byte[] ba2 = sresult[i].getUser().getBytes();
+
+
+		byte[] ba4 = sresult[i].getMD();
+		byte[] ba3 = gfns.convIntBary_2(ba4.length);
+
+		byte[] payload = new byte[2*2 + ba2.length + ba4.length + 1];
+
+		System.arraycopy(ba1, 0, payload, 0, ba1.length);
+		System.arraycopy(ba2, 0, payload, ba1.length, ba2.length);
+		System.arraycopy(ba3, 0, payload, ba1.length+ba2.length, ba3.length);
+		System.arraycopy(ba4, 0, payload, ba1.length+ba2.length+ba3.length, ba4.length);
+		payload[payload.length-1]=(byte)j;
+
+		pack udp_pack = new pack( (byte)31, (int)1234, (byte)16, myAddr,cliPort,(int)payload.length,payload);
+
+		DatagramPacket pack = new DatagramPacket(udp_pack.getPacket(),udp_pack.getPacket().length,servAddr,servPort);					    
+		pocket.send(pack);
+
+	}
+
+	private int establish_download(int i, File file) throws Exception {	
+
+		//InetAddress myAddr=InetAddress.getLocalHost();
 		InetAddress servAddr=sresult[i].getIP();
 
 		int servPort = Integer.parseInt(prop.getProperty("Client_TCP_Port"));
 
-		Socket clientSocket=new Socket(servAddr,servPort);
-		int cliPort  = clientSocket.getLocalPort();
+		Socket clientSocket = null;
+		int cliPort = 0;
+		try {
+			clientSocket = new Socket(servAddr,servPort);
+
+		cliPort  = clientSocket.getLocalPort();
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			return 0;
+		}
 		OutputStream os = clientSocket.getOutputStream();
 		InputStream in = clientSocket.getInputStream();
 
@@ -517,7 +926,7 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 		os.close();
 		in.close();
 
-
+		return 1;
 
 
 
@@ -526,7 +935,7 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 	void send_dload_udp_request(int i) throws Exception{
 
 
-		InetAddress myAddr=InetAddress.getLocalHost();
+		//InetAddress myAddr=InetAddress.getLocalHost();
 		InetAddress servAddr=sresult[i].getIP();
 
 		int servPort = Integer.parseInt(prop.getProperty("Client_UDP_Port"));
@@ -577,8 +986,8 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 			sresult_dis[i].setText(sresult[i+sresults_sh*10].getResultCont());
 			if (sresult[i+sresults_sh*10].getDloadStatus()!=0)
 				sresult_but[i].setEnabled(true);
-//			else
-//				sresult_but[i].setEnabled(false);
+			//			else
+			//				sresult_but[i].setEnabled(false);
 		}
 		sresults_sh++;
 
@@ -592,7 +1001,7 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 			previous_page.setEnabled(false);
 
 		}
-		if (sresults_sh*10>=sresults){
+		if (sresults_sh*10>sresults){
 			next_page.setEnabled(false);
 
 		}
@@ -602,13 +1011,25 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 
 	private void client_exit() throws Exception {
 		// TODO Auto-generated method stub
-		InetAddress myAddr=InetAddress.getLocalHost();
-		InetAddress servAddr=InetAddress.getLocalHost();
+		//InetAddress myAddr=InetAddress.getLocalHost();
+		//InetAddress servAddr=InetAddress.getLocalHost();
 
 		int servPort = Integer.parseInt(prop.getProperty("Server_UDP_Port"));
 		int cliPort  = Integer.parseInt(prop.getProperty("Client_UDP_Port"));
 
-		byte[] payload=new byte[]{00, 01, 00};
+
+		byte[] ba1= gfns.convIntBary_2(myname.length());
+		byte[] ba2= myname.getBytes();
+
+		byte[] payload = new byte[2 + ba2.length + 3];
+
+		System.arraycopy(ba1, 0, payload, 0, ba1.length);
+		System.arraycopy(ba2, 0, payload, ba1.length, ba2.length);
+
+
+
+
+		//	byte[] payload=new byte[]{00, 01, 00};
 		pack udp_pack = new pack( (byte)2, (int)1234, (byte)16, myAddr,cliPort,(int)payload.length,payload);
 
 		DatagramPacket pack = new DatagramPacket(udp_pack.getPacket(),udp_pack.getPacket().length,servAddr,servPort);					    
@@ -620,8 +1041,8 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 
 	private void send_txtsearch(String txtsearch) throws Exception {
 
-		InetAddress myAddr=InetAddress.getLocalHost();
-		InetAddress servAddr=InetAddress.getLocalHost();
+		//InetAddress myAddr=InetAddress.getLocalHost();
+		//InetAddress servAddr=InetAddress.getLocalHost();
 
 		int servPort = Integer.parseInt(prop.getProperty("Server_TCP_Port"));
 		//int cliPort  = Integer.parseInt(prop.getProperty("Client_TCP_Port"));
@@ -635,8 +1056,22 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 		int index=-1;
 
 		trigest textdigest=new trigest(txtsearch);
-		byte[] payload= new byte[1024];
-		payload=textdigest.getSignature();
+
+
+
+		//send user name also 
+
+		byte[] ba1= gfns.convIntBary_2(myname.length());
+		byte[] ba2= myname.getBytes();
+
+		byte[] ba3=textdigest.getSignature();
+
+		byte[] payload = new byte[2 + ba2.length + ba3.length];
+
+		System.arraycopy(ba1, 0, payload, 0, ba1.length);
+		System.arraycopy(ba2, 0, payload, ba1.length, ba2.length);
+		System.arraycopy(ba3, 0, payload, ba1.length+ba2.length, ba3.length);
+
 
 		pack tcp_stream = new pack( (byte)4, (int)7890, (byte)16, myAddr,clientSocket.getPort(),payload.length,payload);
 
@@ -667,25 +1102,16 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 	{
 		frame.setVisible(false);
 		frame1.setVisible(true);
-		search_home.addActionListener(this);
-		exit_home.addActionListener(this);
-		publish_home.addActionListener(this);
-		next_page.addActionListener(this);
-		previous_page.addActionListener(this);
-
-		for (int i = 0; i < 10; i++) {
-			sresult_but[i].addActionListener(this);
-		}
 	}
 
 
 
 	// Sending username and pwd to server
-	public void sendurl(String user,String pwd) throws Exception
+	public void send_login(String user,String pwd) throws Exception
 	{
 
-		InetAddress myAddr=InetAddress.getLocalHost();
-		InetAddress servAddr=InetAddress.getLocalHost();
+		//InetAddress myAddr=InetAddress.getLocalHost();
+		//InetAddress servAddr=InetAddress.getLocalHost();
 
 		int servPort = Integer.parseInt(prop.getProperty("Server_UDP_Port"));
 		int cliPort  = Integer.parseInt(prop.getProperty("Client_UDP_Port"));
@@ -713,10 +1139,12 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 
 	}
 
-	public String publishdata(String user,File file) throws Exception{
+	public String publishdata(String user,File file, String abtract ) throws Exception{
 
-		InetAddress myAddr=InetAddress.getLocalHost();
-		InetAddress servAddr=InetAddress.getLocalHost();
+		//InetAddress myAddr=InetAddress.getLocalHost();
+		//InetAddress servAddr=InetAddress.getLocalHost();
+
+		if ( abtract == null) { abtract = new String("---");}
 
 		int servPort = Integer.parseInt(prop.getProperty("Server_TCP_Port"));
 		//int cliPort  = Integer.parseInt(prop.getProperty("Client_TCP_Port"));
@@ -747,7 +1175,7 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 		byte[] fname=filename.getBytes();
 
 		//		Abstract * length
-		String abtract="ABSTRACT";
+		//String abtract="ABSTRACT";
 		byte[] abtract_len=gfns.convIntBary_2(abtract.length());
 		byte[] fabstract=abtract.getBytes();
 
@@ -806,27 +1234,11 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 		if(clientSocket.isConnected()){
 			os.write(tcp_stream.getPacket());
 		}
-		//		BufferedWriter file_details = new BufferedWriter(new FileWriter("file"));
-		FileWriter file_details=new FileWriter("file.txt");
-
-		//		FileOutputStream file_details=new FileOutputStream("file");
-
 		String file_sha1 = gfns.ByteArraytohexString(mdigest);
-		System.out.println("File sha1:" + file_sha1);
 
-		file_details.write(file_sha1);
-
-		file_details.write("=");
-		file_details.write(myAddr.toString());
-		file_details.write("\n");
-		file_details.close();
-		//System.out.println("File written");
-		//	file_details.write(cbuf)
-		//System.out.println("Payload in HexString format" + gfns.ByteArraytohexString(payload));
-		//System.out.println("File published");
 		if (in.read()==1){
 			JOptionPane.showMessageDialog(null, "Publish successful","Publish", JOptionPane.INFORMATION_MESSAGE);
-			update_file_hash(file, file_sha1);
+			add_file_hash(file, file_sha1);
 
 		}
 		else{
@@ -839,7 +1251,7 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 	}
 
 
-	private void update_file_hash(File file, String file_sha1) {
+	private void add_file_hash(File file, String file_sha1) {
 
 		fileHash.put( file_sha1 , file.getAbsolutePath());
 
@@ -858,6 +1270,64 @@ public class client_gui extends JFrame implements  ActionListener, Runnable
 		} 
 
 	}	
+
+	private void remove_file_hash(String file_sha1) throws Exception {
+
+		fileHash.remove(file_sha1);
+
+		try
+		{
+			FileWriter fw = new FileWriter(new File("SHA_Path"));
+			Iterator it = fileHash.keySet().iterator();
+			File fname;
+			String ts;
+			while ( it.hasNext()){
+				ts= (String) it.next();
+				fw.write(ts);//appends the string to the file
+				ts=fileHash.get(ts);
+				fw.write(ts);
+				fw.write("\n");
+			}
+			fw.close();
+		}
+
+		catch(IOException ioe)
+		{
+			System.err.println("IOException: " + ioe.getMessage());
+		} 
+		
+		
+		
+		
+		int servPort = Integer.parseInt(prop.getProperty("Server_UDP_Port"));
+		int cliPort  = Integer.parseInt(prop.getProperty("Client_UDP_Port"));
+
+		byte[] ba1= gfns.convIntBary_2(myname.length());
+		byte[] ba2= myname.getBytes();
+
+
+		byte[] ba4 = gfns.hexStringToByteArray(file_sha1);
+		byte[] ba3 = gfns.convIntBary_2(ba4.length);
+
+		byte[] payload = new byte[2*2 + ba2.length + ba4.length];
+
+		System.arraycopy(ba1, 0, payload, 0, ba1.length);
+		System.arraycopy(ba2, 0, payload, ba1.length, ba2.length);
+		System.arraycopy(ba3, 0, payload, ba1.length+ba2.length, ba3.length);
+		System.arraycopy(ba4, 0, payload, ba1.length+ba2.length+ba3.length, ba4.length);
+
+		pack udp_pack = new pack( (byte)51, (int)1234, (byte)16, myAddr,cliPort,(int)payload.length,payload);
+
+		DatagramPacket pack = new DatagramPacket(udp_pack.getPacket(),udp_pack.getPacket().length,servAddr,servPort);					    
+		//		    DatagramSocket sock = new DatagramSocket(cliPort);
+		pocket.send(pack);
+		//		pocket.close();				
+		
+		
+		
+
+	}	
+
 
 
 	public static void main(String args[]) throws Exception
@@ -1047,6 +1517,8 @@ class tcp_server implements Runnable{
 
 		}
 
+
+
 	}
 }
 
@@ -1117,4 +1589,50 @@ class clientSocket implements Runnable{
 		}
 
 	}
+}
+
+
+class client_keepAlive implements Runnable{
+	public client_gui cgi;
+	public genfunc gfns = new genfunc();
+
+	client_keepAlive(client_gui cgi){
+		this.cgi=cgi;
+	}
+
+	public void run(){
+		while(true){
+			try {
+				Thread.currentThread();
+				Thread.sleep(140000);
+				send_hello_pack();
+				String usrname=cgi.myname;
+				//cgi.send
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+	}
+
+	private void send_hello_pack() throws Exception {
+
+		int servPort = Integer.parseInt(cgi.prop.getProperty("Server_UDP_Port"));
+		int cliPort = Integer.parseInt(cgi.prop.getProperty("Client_UDP_Port"));
+
+		byte[] ba1= gfns.convIntBary_2(cgi.myname.length());
+		byte[] ba2= cgi.myname.getBytes();
+
+		byte[] payload = new byte[2+ ba2.length];
+
+		System.arraycopy(ba1, 0, payload, 0, ba1.length);
+		System.arraycopy(ba2, 0, payload, ba1.length, ba2.length);
+
+		pack udp_pack = new pack( (byte)3, (int)1234, (byte)16, cgi.myAddr,cliPort,payload.length,payload);
+
+		DatagramPacket pack = new DatagramPacket(udp_pack.getPacket(),udp_pack.getPacket().length,cgi.servAddr,servPort);
+		cgi.pocket.send(pack);
+	}
+
+
+
 }
